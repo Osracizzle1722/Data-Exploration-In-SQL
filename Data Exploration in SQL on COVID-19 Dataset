@@ -1,0 +1,193 @@
+--EXPLORATION ON COVID DEATHS
+
+--Query To see the whole table on COVID deaths, ordered by Location(Country) and date
+SELECT * FROM codeath
+ ORDER BY 3, 4
+
+--selecting the columns needed for covid death exploration
+
+SELECT location, date, total_cases, new_cases, total_deaths, population
+FROM codeath
+ORDER BY location, date
+
+ --Checking rate of death versus confirmed cases
+ --the likelihood of someone dying from covid if infected
+ SELECT location, date, total_cases, total_deaths, 
+ (total_deaths/total_cases)*100 AS Death_Percentage
+FROM codeath
+WHERE continent IS NOT NULL
+ORDER BY location, date
+
+--RESULT : as of 30th April 2021, an infected person in afghanistan has a 4.39 percent of dying 
+
+
+
+--Death rate in Nigeria
+ SELECT location, date, total_cases, total_deaths, 
+ (total_deaths/total_cases)*100 AS Death_Percentage
+FROM codeath
+WHERE continent IS NOT NULL AND location='Nigeria'
+ORDER BY location, date
+
+--RESULT : as of 30th April 2021, an infected person in Nigeria has a 1.24 percent of dying 
+
+
+
+--Total cases against total population
+--Shows what percentage of the population in each country has covid
+SELECT location, date, total_cases, population, 
+(total_cases/population)*100 AS Percentage_of_population
+FROM codeath
+ORDER BY location, date
+
+--RESULT : As of April 2021, 0.08 percent of the population had already been infected 
+
+
+--To find the country with the highest infection rate compared to its population
+
+SELECT location, population, MAX(total_cases) AS highest_number_of_infected_people, 
+MAX(total_cases/population)*100 AS Percentage_of_population_infected
+FROM codeath
+GROUP BY location, population
+ORDER BY Percentage_of_population_infected DESC
+
+--RESULT : At 17 percent, Andorra has the highest percentage of its people infected with covid with 13232 infected out of 77265
+
+
+--To find the country with the highest number of deaths
+SELECT location,MAX(population) AS Total_population, 
+MAX(cast (total_deaths AS INT)) AS total_number_of_deaths
+FROM Codeath
+WHERE continent is not null
+GROUP BY location
+ORDER BY total_number_of_deaths desc
+
+--RESULT : As of April 2021, United States has the highest number of deaths with 576,232 deaths in total
+
+--Top 5 African countries with the highest number of deaths
+SELECT TOP 5 location,MAX(population) AS Total_population, 
+MAX(cast (total_deaths AS INT)) AS total_number_of_deaths
+FROM Codeath
+WHERE continent = 'AFRICA'
+GROUP BY location
+ORDER BY total_number_of_deaths desc
+
+--South Africa tops the list of AFrican countries with the highest number of deaths with a total of 54350 deaths as of the date under review
+
+
+--continent with the highest number of deaths  
+SELECT location, MAX(population) AS Total_population, 
+MAX(cast (total_deaths AS INT)) AS total_number_of_deaths
+FROM Codeath
+WHERE continent IS NULL
+GROUP BY location
+ORDER BY total_number_of_deaths DESC
+
+--To find the number of cases and deaths around the world per day
+--new cases is a float but new death is a varchar
+SELECT date, SUM(new_cases) AS Total_number_of_cases, 
+SUM(CAST(new_deaths AS INT)) AS total_number_of_deaths,
+SUM(CAST(new_deaths AS INT))/SUM(new_cases) AS Death_Percentage_Per_Day
+FROM codeath
+WHERE continent IS NOT NULL
+GROUP BY date
+ORDER BY date, Total_number_of_cases DESC
+
+--Day with the highestnumber of deaths
+SELECT date, SUM(new_cases) AS Total_number_of_cases, 
+SUM(CAST(new_deaths AS INT)) AS total_number_of_deaths,
+SUM(CAST(new_deaths AS INT))/SUM(new_cases) AS Death_Percentage_Per_Day
+FROM codeath
+WHERE continent IS NOT NULL
+GROUP BY date
+ORDER BY total_number_of_deaths desc
+
+
+-- To find the overall number of cases and deaths around the world
+SELECT SUM(new_cases) AS Total_number_of_cases, 
+SUM(CAST(new_deaths as int)) AS total_number_of_deaths, 
+SUM(CAST(new_deaths AS INT))/SUM(new_cases)
+AS total_percentage_of_death
+FROM codeath
+WHERE continent is not null
+
+
+----EXPLORATION ON COVID VACCINATION
+ 
+SELECT * FROM covac
+
+--To see Total Population with number of people vaccinated per day in each country
+SELECT codeath.continent, Codeath.location, codeath.date, 
+codeath.population, covac.new_vaccinations 
+FROM Codeath
+JOIN covac
+ON codeath.location=covac.location
+AND codeath.date=covac.date
+WHERE codeath.continent IS NOT NULL AND covac.new_vaccinations IS NOT NULL
+ORDER BY location, date
+
+--To see number of new vaccinations per day in Nigeria
+SELECT codeath.continent, Codeath.location, codeath.date, codeath.population, covac.new_vaccinations 
+FROM Codeath
+JOIN covac
+ON codeath.location=covac.location
+AND codeath.date=covac.date
+WHERE codeath.continent='Africa' AND codeath.location='Nigeria' AND covac.new_vaccinations IS NOT NULL
+ORDER BY date
+
+--to see a cummulative frequency of new vaccinations for each country as the day goes by
+SELECT codeath.continent, Codeath.location, codeath.date, codeath.population, covac.new_vaccinations,
+SUM(CONVERT(int, covac.new_vaccinations)) 
+OVER  (PARTITION BY codeath.location ORDER BY codeath.location, codeath.date)
+AS cummulative_frequency_vaccination
+FROM Codeath
+JOIN covac
+ON codeath.location=covac.location
+AND codeath.date=covac.date
+WHERE codeath.continent IS NOT NULL AND covac.new_vaccinations IS NOT NULL
+ORDER BY location, date
+
+--To see the cummulative frequency on percentage of the total population that are vaccinated in each country as the day does by
+--Using a Common Table Expression (CTE)
+
+WITH VaccinatedPopulation (continent, location, date, population, new_vaccinations, cummulative_frequency_vaccination)
+AS
+(
+	SELECT codeath.continent, Codeath.location, codeath.date, codeath.population, covac.new_vaccinations,
+	SUM(CONVERT(INT, covac.new_vaccinations)) 
+	OVER  (PARTITION BY codeath.location ORDER BY codeath.location, codeath.date)
+	AS cummulative_frequency_vaccination
+	FROM Codeath
+	JOIN covac
+	ON codeath.location=covac.location
+	AND codeath.date=covac.date
+	WHERE codeath.continent is not null and covac.new_vaccinations IS NOT NULL
+)
+SELECT *, (cummulative_frequency_vaccination/population)*100 AS cummulative_percentage_vaccinated
+FROM VaccinatedPopulation
+
+
+--Using a TEMP TABLE for the same problem above
+
+CREATE TABLE PopulationVaccinated(
+	Continent VARCHAR(255),
+	Location VARCHAR(255),
+	Date datetime,
+	Population Numeric,
+	New_Vaccinations Numeric,
+	Cummulative_Frequency_Vaccination Numeric
+)
+INSERT INTO PopulationVaccinated
+SELECT codeath.continent, Codeath.location, codeath.date, codeath.population, covac.new_vaccinations,
+	SUM(CONVERT(INT, covac.new_vaccinations)) 
+	OVER  (PARTITION BY codeath.location ORDER BY codeath.location, codeath.date)
+	AS cummulative_frequency_vaccination
+	FROM Codeath
+	JOIN covac
+	ON codeath.location=covac.location
+	AND codeath.date=covac.date
+	WHERE codeath.continent is not null and covac.new_vaccinations IS NOT NULL
+
+SELECT *, (cummulative_frequency_vaccination/population)*100 AS cummulative_percentage_vaccinated
+FROM PopulationVaccinated
+
